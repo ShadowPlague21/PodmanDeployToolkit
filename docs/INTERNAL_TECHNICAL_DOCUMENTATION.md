@@ -11,11 +11,13 @@ The toolkit consists of multiple interconnected scripts that work together to pr
 - Handles user interaction and choices
 - Calls other scripts as needed
 - Implements workflow logic for build, ship, deploy
-- **NEW**: Prompts for SSH port when shipping to remote server (defaults to 22)
+- NEW: **Git-Aware Tagging**: Automatically tags images with Git commit hashes (or timestamps) to prevent collisions
+- NEW: **Enhanced Container Testing**: Proper lifecycle management during stability tests (no --rm flag)
 
 ### 2. Project Analyzer (`scripts/analyze_project.sh`)
 - Scans project directory structure
-- Identifies project language and framework
+- NEW: **Enhanced Framework Detection**: Improved Node.js framework detection that reads both `dependencies` and `devDependencies` to identify frameworks like Express, React, Vue, Angular, Next, Nuxt, Svelte, etc.
+- NEW: **Accurate Environment Variable Extraction**: Refined pattern matching to extract only actual environment variables (KEY=value patterns) rather than all capitalized words
 - Extracts dependency information from package managers
 - Gathers port and environment variable information from README
 - Creates metadata JSON file at `/tmp/podman_metadata.json`
@@ -24,15 +26,17 @@ The toolkit consists of multiple interconnected scripts that work together to pr
 - Reads metadata from `/tmp/podman_metadata.json`
 - Sends project information to Groq AI API
 - Receives AI-generated Dockerfile and Quadlet configuration
+- NEW: **Quadlet Validation**: Validates generated Quadlet files using `podman quadlet --dry-run` before saving
 - Writes generated files to project directory
 - Implements strict prompting to ensure valid Podman 4.9.3 Quadlet syntax
 
 ### 4. Ship & Deploy (`scripts/ship_and_deploy.sh`)
+- NEW: **Enhanced Input Validation**: Comprehensive validation to prevent command injection
 - Packages built container image into tarball
+- NEW: **Git-Aware Image Handling**: Supports unique image names with Git hash tags
 - Transfers artifacts to remote server via SSH/SCP with configurable port
 - Triggers remote deployment script
 - Handles cleanup and status reporting
-- **NEW**: Accepts SSH port as parameter (defaults to 22)
 
 ### 5. AI Debugger (`scripts/groq_debug.sh`)
 - Gathers relevant logs and context based on debug context
@@ -44,19 +48,19 @@ The toolkit consists of multiple interconnected scripts that work together to pr
 - Runs on target deployment server
 - Loads container image from tarball
 - Installs Quadlet configuration
-- Sets up systemd user service
+- Sets up systemd user service using pure Quadlet workflow
 - Starts and verifies service operation
 
 ## Data Flow
 
 1. User runs `podman-deploy build <service-name>`
-2. `analyze_project.sh` creates metadata JSON
-3. `generate_configs.sh` creates Dockerfile and .container file
-4. Podman builds the image
-5. Container stability is verified
-6. User chooses to save locally or ship to server
+2. `analyze_project.sh` creates metadata JSON (with enhanced detection)
+3. `generate_configs.sh` creates Dockerfile and .container file (with validation)
+4. Podman builds the image with Git hash tagging
+5. Container stability is verified with proper cleanup
+6. User chooses to save locally or ship to server (with configurable port)
 7. If shipping, user is prompted for SSH port (defaults to 22)
-8. `ship_and_deploy.sh` packages and transfers files using specified port
+8. `ship_and_deploy.sh` packages and transfers files using specified port and unique image name
 9. Remote server runs `podman-deploy-remote` to complete deployment
 
 ## Security Considerations
@@ -65,6 +69,7 @@ The toolkit consists of multiple interconnected scripts that work together to pr
 - SSH keys used for secure remote transfers with configurable ports
 - API keys stored in local .env file (not committed)
 - Input validation on all user-provided data
+- Enhanced validation for service names to prevent command injection
 
 ## Dependencies
 
@@ -80,3 +85,4 @@ The toolkit consists of multiple interconnected scripts that work together to pr
 - Fallback to AI debugging when errors occur
 - Proper cleanup of temporary files
 - Clear error messages for users
+- Validation of AI-generated files before usage

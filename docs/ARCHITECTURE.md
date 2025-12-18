@@ -41,12 +41,20 @@
 │  │                 │  │                 │  │                 │  │
 │  │ - Scan project  │  │ - AI prompts    │  │ - SSH/SCP      │  │
 │  │ - Detect lang   │  │ - API calls     │  │ - File transfer │  │
-│  │ - Metadata gen  │  │ - JSON parsing  │  │ - Remote exec   │  │
+│  │ - Enhanced      │  │ - JSON parsing  │  │ - Remote exec   │  │
+│  │   framework     │  │ - Quadlet       │  │ - Input val-    │  │
+│  │   detection     │  │   validation    │  │   idation       │  │
+│  │ - Accurate env  │  │                 │  │ - Git-aware     │  │
+│  │   var parsing   │  │                 │  │   image names   │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
 │                │              │                      │          │
 │                ▼              ▼                      ▼          │
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                /tmp/podman_metadata.json                    ││
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ ││
+│  │  │ Git hash tagging│  │ Accurate meta-  │  │ Input val-  │ ││
+│  │  │ for image names │  │ data extraction │  │ idation     │ ││
+│  │  └─────────────────┘  └─────────────────┘  └─────────────┘ ││
 │  └─────────────────────────────────────────────────────────────┘│
 │                              │                                  │
 │                              ▼                                  │
@@ -57,6 +65,7 @@
 │  │  │                 │  │                 │                  ││
 │  │  │ - Dockerfile    │  │ - Stability     │                  ││
 │  │  │ - Multi-stage   │  │ - Verification  │                  ││
+│  │  │ - Git tagging   │  │ - Proper cleanup│                  ││
 │  │  └─────────────────┘  └─────────────────┘                  ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
@@ -68,15 +77,15 @@
 +----------------+    +----------------+    +----------------+
 |  Project       |    |  System &      |    |  Groq         |
 |  Metadata      | -> |  User Prompts  | -> |  API          |
-|  (JSON)        |    |  Construction  |    |  (Llama 3.1)  |
+|  (Enhanced)    |    |  Construction  |    |  (Llama 3.1)  |
 +----------------+    +----------------+    +----------------+
-                                                   |
-                                                   v
+         |                       |                      |
+         v                       v                      v
 +----------------+    +----------------+    +----------------+
-|  Response      | <- |  JSON          | <- |  Generated     |
-|  Validation    |    |  Parsing       |    |  Configs       |
-|  & Error       |    |  & Extraction  |    |  (Dockerfile,  |
-|  Handling      |    |                 |    |  .container)   |
+|  Framework     | -> |  Validation    | -> |  Generated     |
+|  Detection     |    |  & Error       |    |  Configs       |
+|  & Env Var     |    |  Handling      |    |  (Validated)   |
+|  Extraction    |    |                 |    |                 |
 +----------------+    +----------------+    +----------------+
 ```
 
@@ -111,4 +120,20 @@ Client Machine                    Target Server
           │                                │
           │ (7) Receive status/confirmation◄───────────────┐
           └────────────────────────────────────────────────┘
+```
+
+## Security & Validation Features
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Security & Validation                        │
+├─────────────────────────────────────────────────────────────────┤
+│ • Input validation for service names, SSH users, servers, ports │
+│ • Command injection prevention for all user inputs              │
+│ • Quadlet file validation using podman quadlet --dry-run        │
+│ • Enhanced environment variable extraction (not over-broad)     │
+│ • Proper container lifecycle management during stability tests  │
+│ • Git-based image tagging to prevent name collisions            │
+│ • Enhanced framework detection for better AI prompting          │
+└─────────────────────────────────────────────────────────────────┘
 ```

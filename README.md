@@ -6,11 +6,13 @@ A lightweight CLI that uses Groq AI to turn any source code folder into a runnin
 
 - 🤖 **AI-Powered Configuration**: Automatically generates Dockerfiles and Podman Quadlet configs using Groq AI
 - ⚡ **One-Command Deploy**: Analyze, build, verify, and deploy with a single command
-- 🔒 **Security Focused**: Creates non-root containers and uses secure deployment practices
+- 🔒 **Security Focused**: Creates non-root containers with enhanced input validation and secure deployment practices
 - 🧪 **Stability Check**: Automatically verifies container stability before deployment
 - 🌐 **Remote Deployment**: Seamlessly ship and deploy to remote servers via SSH (with configurable port)
 - 🤕 **AI-Powered Debugging**: Get intelligent help when things go wrong
-- 📦 **Multi-Language Support**: Handles Node.js, Python, Go, Rust and other project types
+- 📦 **Multi-Language Support**: Handles Node.js (with framework detection), Python, Go, Rust and other project types
+- 🏷️ **Git-Aware**: Automatically tags images with Git commit hashes to prevent collisions
+- ✅ **Quadlet Validation**: Validates generated Quadlet files before deployment
 
 ## 🛠️ Installation
 
@@ -46,9 +48,9 @@ podman-deploy build my-service
 ```
 
 The toolkit will:
-1. Analyze your project structure
-2. Generate AI-optimized container configurations
-3. Build the Podman image
+1. Analyze your project structure (with framework detection)
+2. Generate AI-optimized container configurations (with Quadlet validation)
+3. Build the Podman image with Git hash tagging
 4. Verify container stability with a 60-second test
 5. Offer to save locally or deploy to a remote server (with configurable SSH port)
 
@@ -60,8 +62,8 @@ podman-deploy/
 │   ├── podman-deploy          # Main executable
 │   └── podman-deploy-remote   # Remote-side deployment script
 ├── scripts/
-│   ├── analyze_project.sh     # Analyzes project structure
-│   ├── generate_configs.sh    # AI-powered config generation
+│   ├── analyze_project.sh     # Analyzes project structure with enhanced detection
+│   ├── generate_configs.sh    # AI-powered config generation with Quadlet validation
 │   ├── ship_and_deploy.sh     # Remote deployment with configurable SSH port
 │   └── groq_debug.sh          # AI-powered debugging
 ├── docs/                      # Documentation
@@ -75,10 +77,10 @@ podman-deploy/
 ```bash
 podman-deploy build <service-name>
 ```
-- Analyzes the current project directory
-- Generates container configurations with AI
-- Builds the Podman image
-- Runs a 60-second stability check
+- Analyzes the current project directory with enhanced framework detection
+- Generates container configurations with AI and Quadlet validation
+- Builds the Podman image with Git hash tagging
+- Runs a 60-second stability check with proper container lifecycle management
 - Offers to save locally or ship to remote server (with configurable SSH port)
 
 When choosing remote deployment, you will be prompted for:
@@ -106,10 +108,10 @@ groq_debug.sh <service-name> [build|runtime|general]
 
 ## 🧠 How It Works
 
-1. **Analysis**: `analyze_project.sh` inspects your project and creates metadata
-2. **Generation**: `generate_configs.sh` uses AI to create Dockerfile and .container files
-3. **Building**: Podman builds your optimized container image
-4. **Verification**: Automated stability testing ensures reliability
+1. **Analysis**: `analyze_project.sh` inspects your project (with enhanced Node.js framework and env var detection) and creates metadata
+2. **Generation**: `generate_configs.sh` uses AI to create Dockerfile and .container files (with Quadlet validation)
+3. **Building**: Podman builds your optimized container image with Git hash tagging
+4. **Verification**: Automated stability testing ensures reliability with proper cleanup
 5. **Deployment**: Either save locally or ship to remote servers (with configurable SSH port)
 
 ## 🤝 Contributing
