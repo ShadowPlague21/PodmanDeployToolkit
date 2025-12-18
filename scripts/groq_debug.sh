@@ -9,14 +9,13 @@ set -u
 set -o pipefail
 
 # --- Configuration ---
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-
-# Source the .env file to get the API key
-if [ -f "${SCRIPT_DIR}/../.env" ]; then
+# Changed from relative path to standard location where install.sh places the .env file
+ENV_PATH="$HOME/.local/share/podman-deploy/.env"
+if [ -f "$ENV_PATH" ]; then
     # shellcheck source=/dev/null
-    source "${SCRIPT_DIR}/../.env"
+    source "$ENV_PATH"
 else
-    echo "❌ Error: .env file not found. Please create it and add your GROQ_API_KEY." >&2
+    echo "❌ Error: Configuration file not found at ${ENV_PATH}" >&2
     exit 1
 fi
 

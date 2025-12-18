@@ -92,28 +92,49 @@ case $COMMAND in
         fi
         print_success "Image built successfully."
 
-        # 4. Verify container stability
+        # 4. Verify container stability - FIXED VERSION
         print_status "Running container for 60 seconds to verify stability..."
-        CONTAINER_ID=$(podman run --rm -d "${SERVICE_NAME}:latest")
+        CONTAINER_ID=$(podman run -d "${SERVICE_NAME}:latest")
 
-        if ! podman ps -q --filter "id=${CONTAINER_ID}" | grep -q .; then
+        # Check if container started properly
+        sleep 2  # Give container time to start
+        
+        # Check if container has exited
+        CONTAINER_STATUS=$(podman inspect -f '{{.State.Status}}' "$CONTAINER_ID" 2>/dev/null || echo "missing")
+        
+        if [ "$CONTAINER_STATUS" == "exited" ] || [ "$CONTAINER_STATUS" == "missing" ]; then
             print_error "Container failed during stability check. It exited immediately."
-            podman stop "${CONTAINER_ID}" &>/dev/null || true # Ensure it's stopped
+            # Clean up container before exiting
+            podman stop "$CONTAINER_ID" &>/dev/null || true
+            podman rm "$CONTAINER_ID" &>/dev/null || true
             # Trigger AI debugger for runtime logs
             "${SCRIPT_DIR}/../scripts/groq_debug.sh" "${SERVICE_NAME}" "runtime"
             exit 1
         fi
         
-        sleep 60
+        print_status "Container is running, starting 60-second stability test..."
+        
+        # Run the stability test for 60 seconds
+        for i in {1..60}; do
+            sleep 1
+            CONTAINER_STATUS=$(podman inspect -f '{{.State.Status}}' "$CONTAINER_ID" 2>/dev/null || echo "missing")
+            
+            if [ "$CONTAINER_STATUS" == "exited" ] || [ "$CONTAINER_STATUS" == "missing" ]; then
+                print_error "Container failed during stability check. It exited at second $i."
+                # Clean up container before exiting
+                podman stop "$CONTAINER_ID" &>/dev/null || true
+                podman rm "$CONTAINER_ID" &>/dev/null || true
+                # Trigger AI debugger for runtime logs
+                "${SCRIPT_DIR}/../scripts/groq_debug.sh" "${SERVICE_NAME}" "runtime"
+                exit 1
+            fi
+        done
 
-        if ! podman ps -q --filter "id=${CONTAINER_ID}" | grep -q .; then
-            print_error "Container failed during stability check. It exited within 60 seconds."
-            # Trigger AI debugger for runtime logs
-            "${SCRIPT_DIR}/../scripts/groq_debug.sh" "${SERVICE_NAME}" "runtime"
-            exit 1
-        fi
+        # After 60 seconds, stop and remove the container
+        print_status "Stability test completed, stopping container..."
+        podman stop "$CONTAINER_ID"
+        podman rm "$CONTAINER_ID"
 
-        podman stop "${CONTAINER_ID}"
         print_success "✅ Container '${SERVICE_NAME}' is stable and passed the 60-second test."
 
         # 5. Interactive Choice

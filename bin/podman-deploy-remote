@@ -26,17 +26,6 @@ print_error() {
     echo -e "\033[1;31m❌ Error: $1\033[0m"
 }
 
-# Check for required dependencies
-check_dependencies() {
-    local deps=("podman" "systemctl")
-    for dep in "${deps[@]}"; do
-        if ! command -v "$dep" &> /dev/null; then
-            print_error "Missing dependency: '$dep'. Please install it to continue."
-            exit 1
-        fi
-    done
-}
-
 # --- Main Logic ---
 
 if [ -z "$SERVICE_NAME" ]; then
@@ -55,9 +44,6 @@ if [ ! -f "${SERVICE_NAME}.tar" ] || [ ! -f "${SERVICE_NAME}.container" ]; then
     exit 1
 fi
 
-# Check dependencies
-check_dependencies
-
 # 1. Load the Podman image
 print_status "Loading the Podman image from ${SERVICE_NAME}.tar..."
 podman load -i "${SERVICE_NAME}.tar"
@@ -69,46 +55,39 @@ mkdir -p "$QUADLET_DIR"
 print_status "Installing ${SERVICE_NAME}.container to ${QUADLET_DIR}..."
 cp "${SERVICE_NAME}.container" "$QUADLET_DIR/"
 
-# 3. Generate systemd service file from Quadlet
-print_status "Generating systemd service file for ${SERVICE_NAME}..."
-# Force regeneration of systemd files from quadlet
-if [ -f "$HOME/.config/systemd/user/${SERVICE_NAME}.service" ]; then
-    rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}.service"
-fi
-
-# Use podman to generate the systemd service file
-podman generate systemd --new --files --name "${SERVICE_NAME}" "${SERVICE_NAME}:latest" > /dev/null 2>&1 || true
-
-# Alternatively, we can just make sure the quadlet is in place and systemd will pick it up
-# The quadlet file we placed should be automatically processed by podman-generate-systemd
-
-# 4. Reload systemd user configuration
+# 3. THIS IS THE KEY FIX:
+# Let systemd discover and process the Quadlet file. Do NOT use podman generate systemd.
 print_status "Reloading systemd user configuration..."
 systemctl --user daemon-reload
 
+# 4. Dynamically find the generated service unit name
+# Quadlet files like 'my-app.container' generate units like 'my-app.service'
+# This is more robust than hardcoding the name.
+UNIT_NAME="${SERVICE_NAME}.service"
+
 # 5. Enable and start the service
-print_status "Enabling and starting the ${SERVICE_NAME} service..."
-systemctl --user enable "${SERVICE_NAME}.service"
-systemctl --user start "${SERVICE_NAME}.service"
+print_status "Enabling and starting the ${UNIT_NAME} service..."
+systemctl --user enable "$UNIT_NAME"
+systemctl --user start "$UNIT_NAME"
 
 # 6. Verify the service is running
 print_status "Verifying the service is running..."
 sleep 5  # Give the service a moment to start
 
-if systemctl --user is-active --quiet "${SERVICE_NAME}.service"; then
-    print_success "✅ Service '${SERVICE_NAME}' is running successfully!"
+if systemctl --user is-active --quiet "$UNIT_NAME"; then
+    print_success "✅ Service '${UNIT_NAME}' is running successfully!"
     
     # Show the service status
     print_status "Service status:"
-    systemctl --user status "${SERVICE_NAME}.service"
+    systemctl --user status "$UNIT_NAME"
     
     # Show container logs
     print_status "Recent container logs:"
     podman logs --tail 10 "${SERVICE_NAME}" || echo "Could not retrieve logs"
 else
-    print_error "Service '${SERVICE_NAME}' failed to start properly."
+    print_error "Service '${UNIT_NAME}' failed to start properly."
     print_status "Service status:"
-    systemctl --user status "${SERVICE_NAME}.service" || echo "Could not get status"
+    systemctl --user status "$UNIT_NAME" || echo "Could not get status"
     
     # Show container logs for debugging
     print_status "Container logs:"
@@ -132,7 +111,7 @@ fi
 print_success "🎉 Deployment of '${SERVICE_NAME}' completed successfully on the remote server!"
 echo
 echo "Useful commands:"
-echo "  Check service status: systemctl --user status ${SERVICE_NAME}.service"
-echo "  View logs:          journalctl --user -u ${SERVICE_NAME}.service -f"
-echo "  Restart service:    systemctl --user restart ${SERVICE_NAME}.service"
-echo "  Stop service:       systemctl --user stop ${SERVICE_NAME}.service"
+echo "  Check service status: systemctl --user status ${UNIT_NAME}"
+echo "  View logs:          journalctl --user -u ${UNIT_NAME} -f"
+echo "  Restart service:    systemctl --user restart ${UNIT_NAME}"
+echo "  Stop service:       systemctl --user stop ${UNIT_NAME}"

@@ -8,15 +8,13 @@ set -u
 set -o pipefail
 
 # --- Configuration ---
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-METADATA_FILE="/tmp/podman_metadata.json"
-
-# Source the .env file to get the API key
-if [ -f "${SCRIPT_DIR}/../.env" ]; then
+# Changed from relative path to standard location where install.sh places the .env file
+ENV_PATH="$HOME/.local/share/podman-deploy/.env"
+if [ -f "$ENV_PATH" ]; then
     # shellcheck source=/dev/null
-    source "${SCRIPT_DIR}/../.env"
+    source "$ENV_PATH"
 else
-    echo "❌ Error: .env file not found. Please create it and add your GROQ_API_KEY." >&2
+    echo "❌ Error: Configuration file not found at ${ENV_PATH}" >&2
     exit 1
 fi
 
@@ -33,6 +31,7 @@ PROJECT_DIR=$2
 # --- Main Logic ---
 
 # 1. Read and Validate Metadata
+METADATA_FILE="/tmp/podman_metadata.json"
 if [ ! -f "$METADATA_FILE" ]; then
     echo "❌ Error: Metadata file not found at ${METADATA_FILE}. Did you run the analyzer?" >&2
     exit 1
