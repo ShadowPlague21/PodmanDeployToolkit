@@ -1,28 +1,168 @@
 #!/bin/bash
+
+# podman-deploy: The "Vibe Coder's" deployment companion.
+# Turns any source code folder into a running Podman service in seconds.
+
+# --- Safety First ---
 set -e
+set -u
+set -o pipefail
 
+# --- Configuration & Setup ---
+# Get the absolute path of the script's directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-# ... (add helper functions and dependency checks later) ...
+# The project directory is where the user is running the command from
+PROJECT_DIR=$(pwd)
 
+# --- Helper Functions ---
+print_status() {
+    echo -e "\033[1;34m>>> $1\033[0m"
+}
+
+print_success() {
+    echo -e "\033[1;32m✅ $1\033[0m"
+}
+
+print_error() {
+    echo -e "\033[1;31m❌ Error: $1\033[0m"
+}
+
+# Check for required dependencies
+check_dependencies() {
+    local deps=("jq" "tree" "curl" "podman")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            print_error "Missing dependency: '$dep'. Please install it to continue."
+            echo "   On Ubuntu/Debian, you can run: sudo apt-get install $dep"
+            exit 1
+        fi
+    done
+}
+
+# --- Argument Parsing ---
 COMMAND=${1:-}
 SERVICE_NAME=${2:-}
 
+if [ -z "$COMMAND" ]; then
+    print_error "No command provided."
+    echo "Usage: podman-deploy <build|ship|deploy> <service-name>"
+    exit 1
+fi
+
+if [ "$COMMAND" != "build" ] && [ "$COMMAND" != "ship" ] && [ "$COMMAND" != "deploy" ]; then
+    print_error "Invalid command: $COMMAND"
+    echo "Usage: podman-deploy <build|ship|deploy> <service-name>"
+    exit 1
+fi
+
+if [ -z "$SERVICE_NAME" ]; then
+    print_error "No service name provided."
+    echo "Usage: podman-deploy <command> <service-name>"
+    exit 1
+fi
+
+# --- Main Command Logic ---
+
 case $COMMAND in
     "build")
-        echo "Build command for ${SERVICE_NAME} selected."
-        # TODO: Call analyze_project.sh and generate_configs.sh
+        print_status "Starting build process for '${SERVICE_NAME}'..."
+        check_dependencies
+
+        # 1. Analyze the project
+        print_status "Analyzing project structure..."
+        if ! "${SCRIPT_DIR}/../scripts/analyze_project.sh" "${PROJECT_DIR}"; then
+            print_error "Project analysis failed. Please check your project structure."
+            exit 1
+        fi
+
+        # 2. Generate configuration files
+        print_status "Generating configuration files with AI..."
+        if ! "${SCRIPT_DIR}/../scripts/generate_configs.sh" "${SERVICE_NAME}" "${PROJECT_DIR}"; then
+            print_error "AI generation failed. Please check your Groq API key and network connection."
+            exit 1
+        fi
+
+        # 3. Build the Podman image
+        print_status "Building the Podman image: ${SERVICE_NAME}:latest"
+        if ! podman build -t "${SERVICE_NAME}:latest" .; then
+            print_error "Image build failed."
+            # Trigger AI debugger for build logs
+            "${SCRIPT_DIR}/../scripts/groq_debug.sh" "${SERVICE_NAME}" "build"
+            exit 1
+        fi
+        print_success "Image built successfully."
+
+        # 4. Verify container stability
+        print_status "Running container for 60 seconds to verify stability..."
+        CONTAINER_ID=$(podman run --rm -d "${SERVICE_NAME}:latest")
+
+        if ! podman ps -q --filter "id=${CONTAINER_ID}" | grep -q .; then
+            print_error "Container failed during stability check. It exited immediately."
+            podman stop "${CONTAINER_ID}" &>/dev/null || true # Ensure it's stopped
+            # Trigger AI debugger for runtime logs
+            "${SCRIPT_DIR}/../scripts/groq_debug.sh" "${SERVICE_NAME}" "runtime"
+            exit 1
+        fi
+        
+        sleep 60
+
+        if ! podman ps -q --filter "id=${CONTAINER_ID}" | grep -q .; then
+            print_error "Container failed during stability check. It exited within 60 seconds."
+            # Trigger AI debugger for runtime logs
+            "${SCRIPT_DIR}/../scripts/groq_debug.sh" "${SERVICE_NAME}" "runtime"
+            exit 1
+        fi
+
+        podman stop "${CONTAINER_ID}"
+        print_success "✅ Container '${SERVICE_NAME}' is stable and passed the 60-second test."
+
+        # 5. Interactive Choice
+        echo
+        echo "What would you like to do next?"
+        echo "1) Save all artifacts locally for later use."
+        echo "2) Ship the project and image to a remote server and deploy."
+        echo
+        read -p "Please choose an option (1 or 2): " choice
+
+        case $choice in
+            1)
+                # --- Option 1: Save Locally ---
+                print_status "Saving artifacts locally..."
+                SAVE_DIR="${HOME}/.local/share/podman-deploy/saved-services/${SERVICE_NAME}"
+                mkdir -p "$SAVE_DIR"
+                
+                podman save -o "${SAVE_DIR}/${SERVICE_NAME}.tar" "${SERVICE_NAME}:latest"
+                cp "${SERVICE_NAME}.container" "${SAVE_DIR}/"
+                cp Dockerfile "${SAVE_DIR}/"
+                
+                print_success "Artifacts saved in ${SAVE_DIR}"
+                ;;
+            2)
+                # --- Option 2: Ship to Server ---
+                read -p "Enter the remote server IP or hostname: " REMOTE_SERVER
+                read -p "Enter the remote username: " REMOTE_USER
+                
+                # This script will be created in the next step
+                "${SCRIPT_DIR}/../scripts/ship_and_deploy.sh" "${SERVICE_NAME}" "${REMOTE_USER}" "${REMOTE_SERVER}"
+                ;;
+            *)
+                print_error "Invalid option. Exiting."
+                exit 1
+                ;;
+        esac
         ;;
+
     "ship")
-        echo "Ship command for ${SERVICE_NAME} selected."
-        # TODO: Call ship_and_deploy.sh
+        # This command will be implemented later or might be removed if the build command is sufficient
+        print_error "'ship' command is not yet implemented. Please use 'build' and choose option 2."
+        exit 1
         ;;
-    "deploy") # For the remote server
-        echo "Remote deploy command for ${SERVICE_NAME} selected."
-        # TODO: Add remote deployment logic
-        ;;
-    *)
-        echo "Error: Invalid command."
-        echo "Usage: podman-deploy <build|ship|deploy> <service-name>"
+
+    "deploy")
+        # This command is for the remote server script
+        print_error "'deploy' command is intended for the remote server script."
         exit 1
         ;;
 esac
+
+print_success "Process complete!"

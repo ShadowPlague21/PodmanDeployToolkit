@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# podman-deploy-remote: The remote-side deployment companion.
+# Runs on the target server to complete the deployment process.
+
+# --- Safety First ---
+set -e
+set -u
+set -o pipefail
+
+# --- Configuration ---
+# The script is expected to be run from the staging directory
+STAGING_DIR=$(pwd)
+SERVICE_NAME=${1:-}
+
+# --- Helper Functions ---
+print_status() {
+    echo -e "\033[1;34m>>> $1\033[0m"
+}
+
+print_success() {
+    echo -e "\033[1;32m✅ $1\033[0m"
+}
+
+print_error() {
+    echo -e "\033[1;31m❌ Error: $1\033[0m"
+}
+
+# Check for required dependencies
+check_dependencies() {
+    local deps=("podman" "systemctl")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            print_error "Missing dependency: '$dep'. Please install it to continue."
+            exit 1
+        fi
+    done
+}
+
+# --- Main Logic ---
+
+if [ -z "$SERVICE_NAME" ]; then
+    print_error "No service name provided."
+    echo "Usage: podman-deploy-remote <service-name>"
+    exit 1
+fi
+
+print_status "Starting remote deployment for '${SERVICE_NAME}'..."
+
+# Check for required files
+if [ ! -f "${SERVICE_NAME}.tar" ] || [ ! -f "${SERVICE_NAME}.container" ]; then
+    print_error "Required files not found in staging directory: ${SERVICE_NAME}.tar or ${SERVICE_NAME}.container"
+    print_status "Current directory contents:"
+    ls -la
+    exit 1
+fi
+
+# Check dependencies
+check_dependencies
+
+# 1. Load the Podman image
+print_status "Loading the Podman image from ${SERVICE_NAME}.tar..."
+podman load -i "${SERVICE_NAME}.tar"
+
+# 2. Find and install the Quadlet file to the correct location
+QUADLET_DIR="${HOME}/.config/containers/systemd"
+mkdir -p "$QUADLET_DIR"
+
+print_status "Installing ${SERVICE_NAME}.container to ${QUADLET_DIR}..."
+cp "${SERVICE_NAME}.container" "$QUADLET_DIR/"
+
+# 3. Generate systemd service file from Quadlet
+print_status "Generating systemd service file for ${SERVICE_NAME}..."
+# Force regeneration of systemd files from quadlet
+if [ -f "$HOME/.config/systemd/user/${SERVICE_NAME}.service" ]; then
+    rm -f "$HOME/.config/systemd/user/${SERVICE_NAME}.service"
+fi
+
+# Use podman to generate the systemd service file
+podman generate systemd --new --files --name "${SERVICE_NAME}" "${SERVICE_NAME}:latest" > /dev/null 2>&1 || true
+
+# Alternatively, we can just make sure the quadlet is in place and systemd will pick it up
+# The quadlet file we placed should be automatically processed by podman-generate-systemd
+
+# 4. Reload systemd user configuration
+print_status "Reloading systemd user configuration..."
+systemctl --user daemon-reload
+
+# 5. Enable and start the service
+print_status "Enabling and starting the ${SERVICE_NAME} service..."
+systemctl --user enable "${SERVICE_NAME}.service"
+systemctl --user start "${SERVICE_NAME}.service"
+
+# 6. Verify the service is running
+print_status "Verifying the service is running..."
+sleep 5  # Give the service a moment to start
+
+if systemctl --user is-active --quiet "${SERVICE_NAME}.service"; then
+    print_success "✅ Service '${SERVICE_NAME}' is running successfully!"
+    
+    # Show the service status
+    print_status "Service status:"
+    systemctl --user status "${SERVICE_NAME}.service"
+    
+    # Show container logs
+    print_status "Recent container logs:"
+    podman logs --tail 10 "${SERVICE_NAME}" || echo "Could not retrieve logs"
+else
+    print_error "Service '${SERVICE_NAME}' failed to start properly."
+    print_status "Service status:"
+    systemctl --user status "${SERVICE_NAME}.service" || echo "Could not get status"
+    
+    # Show container logs for debugging
+    print_status "Container logs:"
+    podman logs --tail 20 "${SERVICE_NAME}" || echo "Could not retrieve logs"
+    
+    exit 1
+fi
+
+# 7. Cleanup staging directory (optional - could be kept for debugging)
+read -p "Clean up staging directory? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    print_status "Cleaning up staging directory..."
+    cd ..
+    rm -rf "${STAGING_DIR}"
+    print_success "Staging directory cleaned up."
+else
+    print_status "Keeping staging directory for potential debugging."
+fi
+
+print_success "🎉 Deployment of '${SERVICE_NAME}' completed successfully on the remote server!"
+echo
+echo "Useful commands:"
+echo "  Check service status: systemctl --user status ${SERVICE_NAME}.service"
+echo "  View logs:          journalctl --user -u ${SERVICE_NAME}.service -f"
+echo "  Restart service:    systemctl --user restart ${SERVICE_NAME}.service"
+echo "  Stop service:       systemctl --user stop ${SERVICE_NAME}.service"
