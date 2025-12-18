@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+# ... (add helper functions and dependency checks later) ...
+
+COMMAND=${1:-}
+SERVICE_NAME=${2:-}
+
+case $COMMAND in
+    "build")
+        echo "Build command for ${SERVICE_NAME} selected."
+        # TODO: Call analyze_project.sh and generate_configs.sh
+        ;;
+    "ship")
+        echo "Ship command for ${SERVICE_NAME} selected."
+        # TODO: Call ship_and_deploy.sh
+        ;;
+    "deploy") # For the remote server
+        echo "Remote deploy command for ${SERVICE_NAME} selected."
+        # TODO: Add remote deployment logic
+        ;;
+    *)
+        echo "Error: Invalid command."
+        echo "Usage: podman-deploy <build|ship|deploy> <service-name>"
+        exit 1
+        ;;
+esac

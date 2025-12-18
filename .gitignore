@@ -1,0 +1,9 @@
+# Secrets
+.env
+
+# Temporary files
+/tmp/podman_metadata.json
+*.tar
+
+# OS generated files
+.DS_Store
