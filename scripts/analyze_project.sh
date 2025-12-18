@@ -56,7 +56,29 @@ if [ -f "${PROJECT_DIR}/package.json" ]; then
     JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq --arg pm "$PACKAGE_MANAGER" '.package_manager = $pm')
 
     # Get framework and start command from package.json
-    FRAMEWORK=$(get_json_value "${PROJECT_DIR}/package.json" "dependencies" | jq -r 'keys | map(select(contains("express") or contains("react") or contains("vue") or contains("angular"))) | .[0] // empty')
+    # NEW: More robust framework detection logic
+    FRAMEWORK=""
+    # Read dependencies into bash arrays
+    mapfile -t deps < <(jq -r '.dependencies // {} | keys[]' "${PROJECT_DIR}/package.json" 2>/dev/null || echo "")
+    mapfile -t devDeps < <(jq -r '.devDependencies // {} | keys[]' "${PROJECT_DIR}/package.json" 2>/dev/null || echo "")
+    all_deps=("${deps[@]}" "${devDeps[@]}")
+    
+    # Check for specific frameworks in dependency lists
+    for dep in "${all_deps[@]}"; do
+        case "$dep" in
+            express) FRAMEWORK="express"; break ;;
+            react) FRAMEWORK="react"; break ;;
+            vue) FRAMEWORK="vue"; break ;;
+            angular) FRAMEWORK="angular"; break ;;
+            next) FRAMEWORK="next"; break ;;
+            nuxt) FRAMEWORK="nuxt"; break ;;
+            svelte) FRAMEWORK="svelte"; break ;;
+            gatsby) FRAMEWORK="gatsby"; break ;;
+            nestjs) FRAMEWORK="nestjs"; break ;;
+            fastify) FRAMEWORK="fastify"; break ;;
+        esac
+    done
+    
     START_CMD=$(get_json_value "${PROJECT_DIR}/package.json" "scripts.start")
     JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq --arg fw "$FRAMEWORK" --arg cmd "$START_CMD" '.framework = $fw | .start_command = $cmd')
 
@@ -96,8 +118,9 @@ if [ -n "$README_FILE" ] && [ -f "$README_FILE" ]; then
     PORTS=$(echo "$README_CONTENT" | grep -oE 'port [0-9]+|:[0-9]+' | grep -oE '[0-9]+' | sort -u | jq -R . | jq -s .)
     JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq --argjson p "$PORTS" '.ports = $p')
 
-    # Extract environment variables (e.g., "API_KEY=your_key", "DB_HOST")
-    ENV_VARS=$(echo "$README_CONTENT" | grep -oE '\b[A-Z_]{2,}\b' | sort -u | jq -R . | jq -s .)
+    # NEW: Refined environment variable extraction
+    # Extract lines that look like env var assignments or references
+    ENV_VARS=$(echo "$README_CONTENT" | grep -oE '^\s*[A-Z_]{2,}\s*=|export\s+[A-Z_]{2,}|\.[A-Z_]{2,}' | grep -oE '[A-Z_]{2,}' | sort -u | jq -R . | jq -s .)
     JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq --argjson e "$ENV_VARS" '.env_vars = $e')
 fi
 

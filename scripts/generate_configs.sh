@@ -28,6 +28,11 @@ fi
 SERVICE_NAME=$1
 PROJECT_DIR=$2
 
+# --- Helper Functions ---
+print_error() {
+    echo -e "\033[1;31m❌ Error: $1\033[0m"
+}
+
 # --- Main Logic ---
 
 # 1. Read and Validate Metadata
@@ -126,4 +131,25 @@ if [ -z "$QUADLET_CONTENT" ] || [ "$QUADLET_CONTENT" == "null" ]; then
 fi
 echo "$QUADLET_CONTENT" > "${PROJECT_DIR}/${SERVICE_NAME}.container"
 
-echo "🎉 Successfully generated Dockerfile and ${SERVICE_NAME}.container in ${PROJECT_DIR}"
+# 7. NEW: Validate the generated Quadlet file
+echo "🔍 Validating generated Quadlet file..."
+# Create a temporary directory for validation
+TEMP_DIR=$(mktemp -d)
+# Copy the generated container file to the temp directory for validation
+cp "${PROJECT_DIR}/${SERVICE_NAME}.container" "$TEMP_DIR/"
+# The --dry-run flag checks the syntax without applying it
+if ! podman quadlet --dry-run "$TEMP_DIR/${SERVICE_NAME}.container" 2>/dev/null; then
+    print_error "❌ AI-generated Quadlet file failed validation."
+    print_error "The file contains syntax errors or unsupported keys."
+    print_error "Please review the generated ${SERVICE_NAME}.container file or try re-running the generation."
+    # Clean up temp directory
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Clean up temp directory
+rm -rf "$TEMP_DIR"
+
+echo "✅ Quadlet file is valid."
+
+echo "🎉 Successfully generated and validated Dockerfile and ${SERVICE_NAME}.container in ${PROJECT_DIR}"

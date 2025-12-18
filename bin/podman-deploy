@@ -82,9 +82,19 @@ case $COMMAND in
             exit 1
         fi
 
-        # 3. Build the Podman image
-        print_status "Building the Podman image: ${SERVICE_NAME}:latest"
-        if ! podman build -t "${SERVICE_NAME}:latest" .; then
+        # 3. NEW: Get a unique tag (git hash or timestamp) to prevent image name collisions
+        if git rev-parse --git-dir > /dev/null 2>&1; then
+            UNIQUE_TAG=$(git rev-parse --short HEAD)
+        else
+            UNIQUE_TAG=$(date +%Y%m%d%H%M%S)
+        fi
+        
+        # NEW: Store the image name with unique tag for later use
+        IMAGE_NAME="${SERVICE_NAME}:${UNIQUE_TAG}"
+
+        # 4. Build the Podman image with two tags
+        print_status "Building the Podman image: ${SERVICE_NAME}:latest and ${IMAGE_NAME}"
+        if ! podman build -t "${SERVICE_NAME}:latest" -t "${IMAGE_NAME}" .; then
             print_error "Image build failed."
             # Trigger AI debugger for build logs
             "${SCRIPT_DIR}/../scripts/groq_debug.sh" "${SERVICE_NAME}" "build"
@@ -92,9 +102,9 @@ case $COMMAND in
         fi
         print_success "Image built successfully."
 
-        # 4. Verify container stability - FIXED VERSION
+        # 5. Verify container stability - FIXED VERSION
         print_status "Running container for 60 seconds to verify stability..."
-        CONTAINER_ID=$(podman run -d "${SERVICE_NAME}:latest")
+        CONTAINER_ID=$(podman run -d "${IMAGE_NAME}")
 
         # Check if container started properly
         sleep 2  # Give container time to start
@@ -137,7 +147,7 @@ case $COMMAND in
 
         print_success "✅ Container '${SERVICE_NAME}' is stable and passed the 60-second test."
 
-        # 5. Interactive Choice
+        # 6. Interactive Choice
         echo
         echo "What would you like to do next?"
         echo "1) Save all artifacts locally for later use."
@@ -152,7 +162,8 @@ case $COMMAND in
                 SAVE_DIR="${HOME}/.local/share/podman-deploy/saved-services/${SERVICE_NAME}"
                 mkdir -p "$SAVE_DIR"
                 
-                podman save -o "${SAVE_DIR}/${SERVICE_NAME}.tar" "${SERVICE_NAME}:latest"
+                # NEW: Use the unique image name when saving
+                podman save -o "${SAVE_DIR}/${SERVICE_NAME}-${UNIQUE_TAG}.tar" "${IMAGE_NAME}"
                 cp "${SERVICE_NAME}.container" "${SAVE_DIR}/"
                 cp Dockerfile "${SAVE_DIR}/"
                 
@@ -164,8 +175,8 @@ case $COMMAND in
                 read -p "Enter the remote username: " REMOTE_USER
                 read -p "Enter the SSH port (default 22): " -e -i "22" REMOTE_PORT
                 
-                # This script will be created in the next step
-                "${SCRIPT_DIR}/../scripts/ship_and_deploy.sh" "${SERVICE_NAME}" "${REMOTE_USER}" "${REMOTE_SERVER}" "${REMOTE_PORT}"
+                # NEW: Pass the unique image name to the ship script
+                "${SCRIPT_DIR}/../scripts/ship_and_deploy.sh" "${SERVICE_NAME}" "${REMOTE_USER}" "${REMOTE_SERVER}" "${REMOTE_PORT}" "${IMAGE_NAME}"
                 ;;
             *)
                 print_error "Invalid option. Exiting."

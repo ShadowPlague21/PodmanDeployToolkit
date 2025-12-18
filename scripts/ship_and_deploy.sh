@@ -12,6 +12,7 @@ SERVICE_NAME=$1
 REMOTE_USER=$2
 REMOTE_SERVER=$3
 REMOTE_PORT=${4:-22}  # Default to port 22 if not provided
+IMAGE_NAME=${5:-"${SERVICE_NAME}:latest"}  # Use provided image name or fallback to default
 
 # --- Input Validation Functions ---
 validate_service_name() {
@@ -75,7 +76,7 @@ print_success() {
 # 1. Validate arguments
 if [ -z "$SERVICE_NAME" ] || [ -z "$REMOTE_USER" ] || [ -z "$REMOTE_SERVER" ]; then
     echo "❌ Error: Missing arguments." >&2
-    echo "Usage: ship_and_deploy.sh <service-name> <remote-user> <remote-server> [port]" >&2
+    echo "Usage: ship_and_deploy.sh <service-name> <remote-user> <remote-server> [port] [image-name]" >&2
     exit 1
 fi
 
@@ -84,15 +85,18 @@ validate_service_name "$SERVICE_NAME"
 validate_ssh_creds "$REMOTE_USER" "$REMOTE_SERVER"
 validate_port "$REMOTE_PORT"
 
-# 3. Package the local image into a tarball
-IMAGE_TAR="${SERVICE_NAME}.tar"
-print_status "Packaging image '${SERVICE_NAME}:latest' into ${IMAGE_TAR}..."
-if ! podman save -o "${IMAGE_TAR}" "${SERVICE_NAME}:latest"; then
+# 3. NEW: Extract image tag for the tar filename
+IMAGE_TAG=$(echo "$IMAGE_NAME" | cut -d':' -f2)
+IMAGE_TAR="${SERVICE_NAME}-${IMAGE_TAG}.tar"
+
+# 4. Package the local image into a tarball (using the specific image name)
+print_status "Packaging image '${IMAGE_NAME}' into ${IMAGE_TAR}..."
+if ! podman save -o "${IMAGE_TAR}" "${IMAGE_NAME}"; then
     echo "❌ Error: Failed to save the Podman image." >&2
     exit 1
 fi
 
-# 4. Create a staging directory on the remote server
+# 5. Create a staging directory on the remote server
 REMOTE_STAGING_DIR="~/podman-deploy-staging/${SERVICE_NAME}"
 print_status "Creating staging directory on ${REMOTE_SERVER}:${REMOTE_PORT}..."
 if ! ssh -p "${REMOTE_PORT}" "${REMOTE_USER}@${REMOTE_SERVER}" "mkdir -p ${REMOTE_STAGING_DIR}"; then
@@ -102,7 +106,7 @@ if ! ssh -p "${REMOTE_PORT}" "${REMOTE_USER}@${REMOTE_SERVER}" "mkdir -p ${REMOT
     exit 1
 fi
 
-# 5. Transfer the artifacts to the remote server
+# 6. Transfer the artifacts to the remote server
 print_status "Transferring artifacts to ${REMOTE_USER}@${REMOTE_SERVER}:${REMOTE_STAGING_DIR}..."
 if ! scp -P "${REMOTE_PORT}" "${IMAGE_TAR}" "${SERVICE_NAME}.container" "Dockerfile" "${REMOTE_USER}@${REMOTE_SERVER}:${REMOTE_STAGING_DIR}/"; then
     echo "❌ Error: Failed to transfer files with scp." >&2
@@ -111,7 +115,7 @@ if ! scp -P "${REMOTE_PORT}" "${IMAGE_TAR}" "${SERVICE_NAME}.container" "Dockerf
     exit 1
 fi
 
-# 6. Trigger the remote deployment script
+# 7. Trigger the remote deployment script
 # This assumes the corresponding 'podman-deploy-remote' script exists on the server's PATH
 print_status "Triggering deployment on the remote server..."
 if ! ssh -p "${REMOTE_PORT}" "${REMOTE_USER}@${REMOTE_SERVER}" "cd ${REMOTE_STAGING_DIR} && podman-deploy-remote ${SERVICE_NAME}"; then
@@ -122,7 +126,7 @@ if ! ssh -p "${REMOTE_PORT}" "${REMOTE_USER}@${REMOTE_SERVER}" "cd ${REMOTE_STAG
     exit 1
 fi
 
-# 7. Cleanup
+# 8. Cleanup
 print_status "Cleaning up local artifacts..."
 rm -f "${IMAGE_TAR}"
 
