@@ -141,9 +141,10 @@ case $COMMAND in
                 # --- Option 2: Ship to Server ---
                 read -p "Enter the remote server IP or hostname: " REMOTE_SERVER
                 read -p "Enter the remote username: " REMOTE_USER
+                read -p "Enter the SSH port (default 22): " -e -i "22" REMOTE_PORT
                 
                 # This script will be created in the next step
-                "${SCRIPT_DIR}/../scripts/ship_and_deploy.sh" "${SERVICE_NAME}" "${REMOTE_USER}" "${REMOTE_SERVER}"
+                "${SCRIPT_DIR}/../scripts/ship_and_deploy.sh" "${SERVICE_NAME}" "${REMOTE_USER}" "${REMOTE_SERVER}" "${REMOTE_PORT}"
                 ;;
             *)
                 print_error "Invalid option. Exiting."
