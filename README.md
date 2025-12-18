@@ -8,7 +8,7 @@ A lightweight CLI that uses Groq AI to turn any source code folder into a runnin
 - ⚡ **One-Command Deploy**: Analyze, build, verify, and deploy with a single command
 - 🔒 **Security Focused**: Creates non-root containers and uses secure deployment practices
 - 🧪 **Stability Check**: Automatically verifies container stability before deployment
-- 🌐 **Remote Deployment**: Seamlessly ship and deploy to remote servers via SSH
+- 🌐 **Remote Deployment**: Seamlessly ship and deploy to remote servers via SSH (with configurable port)
 - 🤕 **AI-Powered Debugging**: Get intelligent help when things go wrong
 - 📦 **Multi-Language Support**: Handles Node.js, Python, Go, Rust and other project types
 
@@ -36,6 +36,7 @@ cp ~/.local/share/podman-deploy/.env.example ~/.local/share/podman-deploy/.env
 - tree
 - bash-compatible shell
 - Passwordless SSH configured (for remote deployments)
+- SSH server running on target system (port configurable, default 22)
 
 ## 🚀 Quick Start
 
@@ -49,7 +50,7 @@ The toolkit will:
 2. Generate AI-optimized container configurations
 3. Build the Podman image
 4. Verify container stability with a 60-second test
-5. Offer to save locally or deploy to a remote server
+5. Offer to save locally or deploy to a remote server (with configurable SSH port)
 
 ## 📁 Project Structure
 
@@ -61,7 +62,7 @@ podman-deploy/
 ├── scripts/
 │   ├── analyze_project.sh     # Analyzes project structure
 │   ├── generate_configs.sh    # AI-powered config generation
-│   ├── ship_and_deploy.sh     # Remote deployment
+│   ├── ship_and_deploy.sh     # Remote deployment with configurable SSH port
 │   └── groq_debug.sh          # AI-powered debugging
 ├── docs/                      # Documentation
 ├── .env.example              # API key configuration
@@ -78,7 +79,12 @@ podman-deploy build <service-name>
 - Generates container configurations with AI
 - Builds the Podman image
 - Runs a 60-second stability check
-- Offers to save locally or ship to remote server
+- Offers to save locally or ship to remote server (with configurable SSH port)
+
+When choosing remote deployment, you will be prompted for:
+- Remote server IP or hostname
+- Remote username
+- SSH port (defaults to 22, can be changed)
 
 ### `ship` (Coming Soon)
 For triggering remote deployment directly.
@@ -104,7 +110,7 @@ groq_debug.sh <service-name> [build|runtime|general]
 2. **Generation**: `generate_configs.sh` uses AI to create Dockerfile and .container files
 3. **Building**: Podman builds your optimized container image
 4. **Verification**: Automated stability testing ensures reliability
-5. **Deployment**: Either save locally or ship to remote servers
+5. **Deployment**: Either save locally or ship to remote servers (with configurable SSH port)
 
 ## 🤝 Contributing
 

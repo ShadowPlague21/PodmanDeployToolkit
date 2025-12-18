@@ -11,6 +11,7 @@ The toolkit consists of multiple interconnected scripts that work together to pr
 - Handles user interaction and choices
 - Calls other scripts as needed
 - Implements workflow logic for build, ship, deploy
+- **NEW**: Prompts for SSH port when shipping to remote server (defaults to 22)
 
 ### 2. Project Analyzer (`scripts/analyze_project.sh`)
 - Scans project directory structure
@@ -28,9 +29,10 @@ The toolkit consists of multiple interconnected scripts that work together to pr
 
 ### 4. Ship & Deploy (`scripts/ship_and_deploy.sh`)
 - Packages built container image into tarball
-- Transfers artifacts to remote server via SSH/SCP
+- Transfers artifacts to remote server via SSH/SCP with configurable port
 - Triggers remote deployment script
 - Handles cleanup and status reporting
+- **NEW**: Accepts SSH port as parameter (defaults to 22)
 
 ### 5. AI Debugger (`scripts/groq_debug.sh`)
 - Gathers relevant logs and context based on debug context
@@ -53,13 +55,14 @@ The toolkit consists of multiple interconnected scripts that work together to pr
 4. Podman builds the image
 5. Container stability is verified
 6. User chooses to save locally or ship to server
-7. If shipping, `ship_and_deploy.sh` packages and transfers files
-8. Remote server runs `podman-deploy-remote` to complete deployment
+7. If shipping, user is prompted for SSH port (defaults to 22)
+8. `ship_and_deploy.sh` packages and transfers files using specified port
+9. Remote server runs `podman-deploy-remote` to complete deployment
 
 ## Security Considerations
 
 - All containers run as non-root users
-- SSH keys used for secure remote transfers
+- SSH keys used for secure remote transfers with configurable ports
 - API keys stored in local .env file (not committed)
 - Input validation on all user-provided data
 
