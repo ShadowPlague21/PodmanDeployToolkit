@@ -85,9 +85,8 @@ validate_service_name "$SERVICE_NAME"
 validate_ssh_creds "$REMOTE_USER" "$REMOTE_SERVER"
 validate_port "$REMOTE_PORT"
 
-# 3. NEW: Extract image tag for the tar filename
-IMAGE_TAG=$(echo "$IMAGE_NAME" | cut -d':' -f2)
-IMAGE_TAR="${SERVICE_NAME}-${IMAGE_TAG}.tar"
+# 3. NEW: Standardize image tar name for transfer (Fixes mismatch with remote script)
+IMAGE_TAR="${SERVICE_NAME}.tar"
 
 # 4. Package the local image into a tarball (using the specific image name)
 print_status "Packaging image '${IMAGE_NAME}' into ${IMAGE_TAR}..."

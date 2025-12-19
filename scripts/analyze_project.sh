@@ -9,7 +9,7 @@ set -o pipefail
 
 # --- Configuration ---
 PROJECT_DIR=$1
-METADATA_FILE="/tmp/podman_metadata.json"
+METADATA_FILE=${2:-"/tmp/podman_metadata.json"}
 
 # --- Helper Functions ---
 # Function to safely get a JSON value from a file
@@ -35,6 +35,7 @@ JSON_OUTPUT=$(jq -n \
     '{
         project_dir: $project_dir,
         project_type: "unrecognized",
+        project_role: "backend",
         language: "",
         framework: "",
         package_manager: "",
@@ -66,17 +67,19 @@ if [ -f "${PROJECT_DIR}/package.json" ]; then
     # Check for specific frameworks in dependency lists
     for dep in "${all_deps[@]}"; do
         case "$dep" in
-            express) FRAMEWORK="express"; break ;;
-            react) FRAMEWORK="react"; break ;;
-            vue) FRAMEWORK="vue"; break ;;
-            angular) FRAMEWORK="angular"; break ;;
-            next) FRAMEWORK="next"; break ;;
-            nuxt) FRAMEWORK="nuxt"; break ;;
-            svelte) FRAMEWORK="svelte"; break ;;
-            gatsby) FRAMEWORK="gatsby"; break ;;
-            nestjs) FRAMEWORK="nestjs"; break ;;
-            fastify) FRAMEWORK="fastify"; break ;;
+            express) FRAMEWORK="express";;
+            react) FRAMEWORK="react"; JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq '.project_role = "frontend"');;
+            vue) FRAMEWORK="vue"; JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq '.project_role = "frontend"');;
+            angular) FRAMEWORK="angular"; JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq '.project_role = "frontend"');;
+            next) FRAMEWORK="next"; JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq '.project_role = "frontend"');;
+            nuxt) FRAMEWORK="nuxt"; JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq '.project_role = "frontend"');;
+            svelte) FRAMEWORK="svelte"; JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq '.project_role = "frontend"');;
+            gatsby) FRAMEWORK="gatsby"; JSON_OUTPUT=$(echo "$JSON_OUTPUT" | jq '.project_role = "frontend"');;
+            nestjs) FRAMEWORK="nestjs";;
+            fastify) FRAMEWORK="fastify";;
         esac
+        # If framework found, stop checking
+        if [ -n "$FRAMEWORK" ]; then break; fi
     done
     
     START_CMD=$(get_json_value "${PROJECT_DIR}/package.json" "scripts.start")

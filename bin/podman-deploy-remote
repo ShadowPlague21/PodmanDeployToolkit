@@ -34,6 +34,16 @@ if [ -z "$SERVICE_NAME" ]; then
     exit 1
 fi
 
+# 0. Pre-flight check: Verify systemd user session
+if ! systemctl --user list-units --no-legend > /dev/null 2>&1; then
+    print_error "Unable to access 'systemctl --user'. The systemd user instance is not active."
+    print_status "This is common on fresh servers or when SSHing as a user without lingering enabled."
+    print_status "To fix this, run the following command as ROOT on the server:"
+    echo "   loginctl enable-linger $USER"
+    print_status "Then try deploying again."
+    exit 1
+fi
+
 print_status "Starting remote deployment for '${SERVICE_NAME}'..."
 
 # Check for required files
@@ -81,17 +91,34 @@ if systemctl --user is-active --quiet "$UNIT_NAME"; then
     print_status "Service status:"
     systemctl --user status "$UNIT_NAME"
     
-    # Show container logs
-    print_status "Recent container logs:"
-    podman logs --tail 10 "${SERVICE_NAME}" || echo "Could not retrieve logs"
+    # Show container logs using journalctl (Source of Truth for Quadlet)
+    print_status "Recent service logs:"
+    journalctl --user -u "$UNIT_NAME" -n 20 --no-pager || echo "Could not retrieve logs"
 else
     print_error "Service '${UNIT_NAME}' failed to start properly."
     print_status "Service status:"
     systemctl --user status "$UNIT_NAME" || echo "Could not get status"
     
     # Show container logs for debugging
-    print_status "Container logs:"
-    podman logs --tail 20 "${SERVICE_NAME}" || echo "Could not retrieve logs"
+    print_status "Service logs:"
+    journalctl --user -u "$UNIT_NAME" -n 50 --no-pager || echo "Could not retrieve logs"
+    
+    echo
+    echo "================================================================="
+    echo "⚠️  DEPLOYMENT FAILED - MANUAL ROLLBACK INSTRUCTIONS"
+    echo "================================================================="
+    echo "To revert changes, run the following commands manually:"
+    echo
+    echo "1. Stop and disable the broken service:"
+    echo "   systemctl --user stop ${UNIT_NAME}"
+    echo "   systemctl --user disable ${UNIT_NAME}"
+    echo
+    echo "2. Remove the Quadlet definition:"
+    echo "   rm ${QUADLET_DIR}/${SERVICE_NAME}.container"
+    echo
+    echo "3. Reload systemd:"
+    echo "   systemctl --user daemon-reload"
+    echo "================================================================="
     
     exit 1
 fi

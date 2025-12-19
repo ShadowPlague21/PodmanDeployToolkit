@@ -27,6 +27,7 @@ fi
 # --- Arguments ---
 SERVICE_NAME=$1
 PROJECT_DIR=$2
+METADATA_FILE=${3:-"/tmp/podman_metadata.json"}
 
 # --- Helper Functions ---
 print_error() {
@@ -36,7 +37,6 @@ print_error() {
 # --- Main Logic ---
 
 # 1. Read and Validate Metadata
-METADATA_FILE="/tmp/podman_metadata.json"
 if [ ! -f "$METADATA_FILE" ]; then
     echo "❌ Error: Metadata file not found at ${METADATA_FILE}. Did you run the analyzer?" >&2
     exit 1
@@ -55,8 +55,9 @@ Your task is to generate a Dockerfile and a Quadlet file for a systemd user serv
 
 STRICT RULES:
 - The Quadlet file MUST only use keys and syntax valid for Podman 4.9.3. Do NOT use features from Podman 5.0 or later.
-- The Dockerfile MUST use multi-stage builds for compiled languages (Go, Rust, TypeScript).
-- The final container image MUST run as a non-root user.
+- The Dockerfile MUST use multi-stage builds for compiled languages (Go, Rust, TypeScript) AND for frontend frameworks (React, Vue, etc.).
+- IF 'project_role' is 'frontend': Generate a 2-stage Dockerfile. Stage 1: Build (node). Stage 2: Serve static files using Nginx (alpine) or a lightweight static server. Do NOT run development servers (e.g., 'npm start') in production.
+- The final container image MUST run as a non-root user (even for Nginx, use unprivileged ports > 1024 or configured non-root user).
 - Use official, minimal base images (e.g., alpine, slim).
 - Combine RUN commands in Dockerfile to minimize layers.
 - The output MUST be a valid JSON object with two keys: 'dockerfile' and 'quadlet'.
@@ -150,6 +151,7 @@ fi
 # Clean up temp directory
 rm -rf "$TEMP_DIR"
 
-echo "✅ Quadlet file is valid."
+echo "✅ Quadlet syntax check passed."
+echo "   (Note: This only verifies the file format. Image existence and runtime settings are not checked yet.)"
 
 echo "🎉 Successfully generated and validated Dockerfile and ${SERVICE_NAME}.container in ${PROJECT_DIR}"

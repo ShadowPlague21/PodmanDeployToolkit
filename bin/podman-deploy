@@ -42,10 +42,27 @@ check_dependencies() {
 # --- Argument Parsing ---
 COMMAND=${1:-}
 SERVICE_NAME=${2:-}
+SHIFT_COUNT=2
+
+# Check for flags
+MANUAL_MODE=0
+CONFIRM_YES=0
+
+# Iterate over remaining arguments
+for arg in "$@"; do
+    case $arg in
+        --no-ai|--manual)
+            MANUAL_MODE=1
+            ;;
+        --yes)
+            CONFIRM_YES=1
+            ;;
+    esac
+done
 
 if [ -z "$COMMAND" ]; then
     print_error "No command provided."
-    echo "Usage: podman-deploy <build|ship|deploy> <service-name>"
+    echo "Usage: podman-deploy <build|ship|deploy> <service-name> [--no-ai|--manual] [--yes]"
     exit 1
 fi
 
@@ -61,6 +78,17 @@ if [ -z "$SERVICE_NAME" ]; then
     exit 1
 fi
 
+# --- Trust Boundary Message ---
+echo "================================================================="
+echo "🔒 PODMAN-DEPLOY TRUST BOUNDARY"
+echo "================================================================="
+echo "1. This tool is an AUTOMATION ASSISTANT, not a verification engine."
+echo "2. AI-generated code (Dockerfiles, Quadlets) MUST be audited."
+echo "3. You are responsible for the security of the artifacts deployed."
+echo "4. Use --manual to supply your own vetted configuration files."
+echo "================================================================="
+echo
+
 # --- Main Command Logic ---
 
 case $COMMAND in
@@ -68,19 +96,41 @@ case $COMMAND in
         print_status "Starting build process for '${SERVICE_NAME}'..."
         check_dependencies
 
-        # 1. Analyze the project
-        print_status "Analyzing project structure..."
-        if ! "${SCRIPT_DIR}/../scripts/analyze_project.sh" "${PROJECT_DIR}"; then
-            print_error "Project analysis failed. Please check your project structure."
-            exit 1
+        # Create a unique temporary file for metadata to prevent race conditions
+        METADATA_FILE=$(mktemp /tmp/podman_metadata.XXXXXX.json)
+
+        if [ "$MANUAL_MODE" -eq 1 ]; then
+            print_status "MANUAL MODE ENABLED: Skipping AI generation."
+            # Verify required files exist
+            if [ ! -f "${PROJECT_DIR}/Dockerfile" ]; then
+                print_error "Manual mode requires a 'Dockerfile' in the project root."
+                exit 1
+            fi
+            if [ ! -f "${PROJECT_DIR}/${SERVICE_NAME}.container" ]; then
+                print_error "Manual mode requires a '${SERVICE_NAME}.container' Quadlet file in the project root."
+                exit 1
+            fi
+            print_success "Found Dockerfile and ${SERVICE_NAME}.container."
+        else
+            # 1. Analyze the project
+            print_status "Analyzing project structure..."
+            if ! "${SCRIPT_DIR}/../scripts/analyze_project.sh" "${PROJECT_DIR}" "${METADATA_FILE}"; then
+                print_error "Project analysis failed. Please check your project structure."
+                rm -f "$METADATA_FILE"
+                exit 1
+            fi
+
+            # 2. Generate configuration files
+            print_status "Generating configuration files with AI..."
+            if ! "${SCRIPT_DIR}/../scripts/generate_configs.sh" "${SERVICE_NAME}" "${PROJECT_DIR}" "${METADATA_FILE}"; then
+                print_error "AI generation failed. Please check your Groq API key and network connection."
+                rm -f "$METADATA_FILE"
+                exit 1
+            fi
         fi
 
-        # 2. Generate configuration files
-        print_status "Generating configuration files with AI..."
-        if ! "${SCRIPT_DIR}/../scripts/generate_configs.sh" "${SERVICE_NAME}" "${PROJECT_DIR}"; then
-            print_error "AI generation failed. Please check your Groq API key and network connection."
-            exit 1
-        fi
+        # Clean up metadata file
+        rm -f "$METADATA_FILE"
 
         # 3. NEW: Get a unique tag (git hash or timestamp) to prevent image name collisions
         if git rev-parse --git-dir > /dev/null 2>&1; then
@@ -91,6 +141,13 @@ case $COMMAND in
         
         # NEW: Store the image name with unique tag for later use
         IMAGE_NAME="${SERVICE_NAME}:${UNIQUE_TAG}"
+        
+        # --- Naming Convention Definitions ---
+        # SERVICE_NAME   : User-facing name provided via CLI (e.g., "myapp")
+        # IMAGE_NAME     : Full image reference with tag (e.g., "myapp:a1b2c3d")
+        # CONTAINER_FILE : Quadlet definition file (e.g., "myapp.container")
+        # UNIT_NAME      : Systemd unit name (derived from .container, e.g., "myapp.service")
+        # -------------------------------------
 
         # 4. Build the Podman image with two tags
         print_status "Building the Podman image: ${SERVICE_NAME}:latest and ${IMAGE_NAME}"
@@ -103,8 +160,9 @@ case $COMMAND in
         print_success "Image built successfully."
 
         # 5. Verify container stability - FIXED VERSION
-        print_status "Running container for 60 seconds to verify stability..."
-        CONTAINER_ID=$(podman run -d "${IMAGE_NAME}")
+        print_status "Verifying container stability..."
+        # Run with -P to publish exposed ports for connectivity checks
+        CONTAINER_ID=$(podman run -d -P "${IMAGE_NAME}")
 
         # Check if container started properly
         sleep 2  # Give container time to start
@@ -113,7 +171,7 @@ case $COMMAND in
         CONTAINER_STATUS=$(podman inspect -f '{{.State.Status}}' "$CONTAINER_ID" 2>/dev/null || echo "missing")
         
         if [ "$CONTAINER_STATUS" == "exited" ] || [ "$CONTAINER_STATUS" == "missing" ]; then
-            print_error "Container failed during stability check. It exited immediately."
+            print_error "Container failed during startup check. It exited immediately."
             # Clean up container before exiting
             podman stop "$CONTAINER_ID" &>/dev/null || true
             podman rm "$CONTAINER_ID" &>/dev/null || true
@@ -122,30 +180,52 @@ case $COMMAND in
             exit 1
         fi
         
-        print_status "Container is running, starting 60-second stability test..."
+        # Detect mapped ports
+        MAPPED_PORT=$(podman port "$CONTAINER_ID" | awk -F: '{print $2}' | head -n 1 || echo "")
         
-        # Run the stability test for 60 seconds
+        if [ -n "$MAPPED_PORT" ]; then
+            print_status "Detected exposed port mapped to localhost:${MAPPED_PORT}. Attempting connectivity check..."
+        else
+            print_status "No exposed ports detected. monitoring process status for 60 seconds..."
+        fi
+        
+        # Run the stability test for up to 60 seconds
+        IS_HEALTHY=0
         for i in {1..60}; do
             sleep 1
             CONTAINER_STATUS=$(podman inspect -f '{{.State.Status}}' "$CONTAINER_ID" 2>/dev/null || echo "missing")
             
             if [ "$CONTAINER_STATUS" == "exited" ] || [ "$CONTAINER_STATUS" == "missing" ]; then
                 print_error "Container failed during stability check. It exited at second $i."
-                # Clean up container before exiting
                 podman stop "$CONTAINER_ID" &>/dev/null || true
                 podman rm "$CONTAINER_ID" &>/dev/null || true
-                # Trigger AI debugger for runtime logs
                 "${SCRIPT_DIR}/../scripts/groq_debug.sh" "${SERVICE_NAME}" "runtime"
                 exit 1
             fi
+            
+            # If we have a port, try to curl it
+            if [ -n "$MAPPED_PORT" ]; then
+                if curl -s -I -m 1 "http://localhost:${MAPPED_PORT}" >/dev/null 2>&1; then
+                    print_success "Container responded to HTTP probe on port ${MAPPED_PORT}!"
+                    IS_HEALTHY=1
+                    break
+                fi
+            fi
         done
 
-        # After 60 seconds, stop and remove the container
-        print_status "Stability test completed, stopping container..."
-        podman stop "$CONTAINER_ID"
-        podman rm "$CONTAINER_ID"
+        # After test, stop and remove the container
+        print_status "Stopping verification container..."
+        podman stop "$CONTAINER_ID" >/dev/null
+        podman rm "$CONTAINER_ID" >/dev/null
 
-        print_success "✅ Container '${SERVICE_NAME}' is stable and passed the 60-second test."
+        if [ -n "$MAPPED_PORT" ] && [ "$IS_HEALTHY" -eq 1 ]; then
+             print_success "✅ Container '${SERVICE_NAME}' passed stability and readiness checks."
+        elif [ -n "$MAPPED_PORT" ]; then
+             print_status "⚠️  Container stayed running but did not respond to HTTP probes. Check your application logs."
+             print_success "✅ Container '${SERVICE_NAME}' passed stability check (process running)."
+        else
+             print_success "✅ Container '${SERVICE_NAME}' passed stability check (process running)."
+        fi
 
         # 6. Interactive Choice
         echo
@@ -174,6 +254,29 @@ case $COMMAND in
                 read -p "Enter the remote server IP or hostname: " REMOTE_SERVER
                 read -p "Enter the remote username: " REMOTE_USER
                 read -p "Enter the SSH port (default 22): " -e -i "22" REMOTE_PORT
+                
+                # --- PRE-DEPLOY CONFIRMATION GATE ---
+                UNIT_NAME="${SERVICE_NAME}.service"
+                echo
+                echo "================================================================="
+                echo "🚀 DEPLOYMENT SUMMARY - PLEASE VERIFY"
+                echo "================================================================="
+                echo "   Image Name:      ${IMAGE_NAME}"
+                echo "   Service Name:    ${SERVICE_NAME}"
+                echo "   Systemd Unit:    ${UNIT_NAME}"
+                echo "   Target:          ${REMOTE_USER}@${REMOTE_SERVER}:${REMOTE_PORT}"
+                echo "================================================================="
+                
+                if [ "$CONFIRM_YES" -eq 1 ]; then
+                    print_status "Bypassing confirmation (--yes used)."
+                else
+                    echo "Type 'DEPLOY' to confirm and proceed with deployment."
+                    read -p "> " CONFIRM_INPUT
+                    if [ "$CONFIRM_INPUT" != "DEPLOY" ]; then
+                        print_error "Deployment cancelled by user."
+                        exit 1
+                    fi
+                fi
                 
                 # NEW: Pass the unique image name to the ship script
                 "${SCRIPT_DIR}/../scripts/ship_and_deploy.sh" "${SERVICE_NAME}" "${REMOTE_USER}" "${REMOTE_SERVER}" "${REMOTE_PORT}" "${IMAGE_NAME}"
